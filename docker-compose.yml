@@ -1,0 +1,7 @@
+services:
+  cleaner:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["node", "dist/index.js"]
