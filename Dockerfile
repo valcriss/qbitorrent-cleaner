@@ -10,4 +10,4 @@ COPY src ./src
 
 RUN npm run build
 
-CMD ["node", "dist/index.js", "--run-once"]
+CMD ["node", "dist/src/index.js", "--run-once"]

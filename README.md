@@ -1,95 +1,223 @@
 # qBittorrent Cleaner
 
-Outil léger en Node.js/TypeScript pour supprimer en sécurité des torrents anciens depuis l'API Web de qBittorrent, selon des règles de rétention configurables.
+Safe, automation-first torrent cleanup for qBittorrent.
 
-## Fonctionnalités
+`qBittorrent Cleaner` connects to the official qBittorrent Web API, evaluates torrents against configurable retention rules, and removes only the torrents that match every condition you define. The project is built to be conservative by default: `dry-run` is enabled out of the box, deletion limits are enforced, and protected tags, categories, and save paths are respected before anything can be removed.
 
-- Authentification via l'API Web qBittorrent
-- Analyse des torrents avec règles cumulatives
-- Mode `dry-run` activé par défaut
-- Limite stricte de suppressions par exécution
-- Protections par tags, catégories et chemins
-- Exécution ponctuelle ou planifiée via `node-cron`
-- Support Docker
-- Logs structurés avec `pino`
+## Highlights
 
-## Règles de suppression
+- Safe by default with `DRY_RUN=true`
+- Interactive approval mode before real deletion
+- Scheduled execution with `node-cron`
+- Immediate one-shot execution for local testing
+- Protection rules for tags, categories, and save paths
+- Structured logging with `pino`
+- Docker-ready
+- TypeScript, ESLint, Prettier, and Vitest included
 
-Un torrent devient éligible seulement si toutes les conditions configurées sont remplies :
+## How It Works
 
-- ratio `>= MIN_RATIO`
-- inactif depuis `INACTIVE_DAYS`
-- âge minimal `>= MIN_TORRENT_AGE_DAYS`
-- torrent terminé si `ONLY_COMPLETED=true`
-- non protégé par tag, catégorie ou chemin
+A torrent becomes eligible for deletion only if all configured conditions are met:
 
-## Démarrage local
+- `ratio >= MIN_RATIO`
+- inactive for at least `INACTIVE_DAYS`
+- older than `MIN_TORRENT_AGE_DAYS`
+- completed, when `ONLY_COMPLETED=true`
+- not protected by tag, category, or save path
+
+The cleaner then applies an additional hard safety cap:
+
+- no more than `MAX_DELETE_PER_RUN` torrents can be deleted in a single run
+
+## Safety Model
+
+This project is intentionally conservative.
+
+- `DRY_RUN=true` means no deletion happens, only analysis and logs
+- `INTERACTIVE=true` forces a dry-run first, then asks for one global confirmation
+- empty input cancels deletion in interactive mode
+- only explicit `Y` or `yes` confirms deletion
+- if an interactive console is not available, the run stays safe and skips real deletion
+
+## Requirements
+
+- Node.js `20+`
+- A reachable qBittorrent instance with Web UI enabled
+- Valid qBittorrent Web API credentials
+
+## Quick Start
+
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Create your environment file:
+
+```bash
 cp .env.example .env
+```
+
+3. Edit `.env` with your qBittorrent URL and credentials.
+
+4. Run a local analysis:
+
+```bash
 npm run dev
 ```
 
-Pour un lancement unique :
+With the default configuration, this performs a safe dry-run.
+
+## Common Run Modes
+
+Local one-off analysis:
+
+```bash
+npm run dev
+```
+
+Watch mode during development:
+
+```bash
+npm run dev:watch
+```
+
+Run the compiled app once:
 
 ```bash
 npm run build
-node dist/index.js --run-once
+node dist/src/index.js --run-once
 ```
 
-## Variables d'environnement
+Run the compiled app with the `start` script:
 
-Voir [.env.example](./.env.example) pour la configuration complète.
+```bash
+npm run build
+npm run start
+```
 
-Les variables de sécurité importantes :
+## Interactive Mode
 
-- `DRY_RUN=true`
-- `INTERACTIVE=false`
-- `MAX_DELETE_PER_RUN=5`
-- `EXCLUDED_TAG=keep`
-- `PROTECTED_CATEGORIES=archive,linux-isos`
-- `PROTECTED_SAVE_PATHS=/data/permanent,/data/archive`
+Set the following values in `.env`:
+
+```env
+INTERACTIVE=true
+DRY_RUN=false
+USE_CRON=false
+```
+
+Then run:
+
+```bash
+npm run dev
+```
+
+The cleaner will:
+
+1. perform a dry-run analysis
+2. show matching deletion candidates in the logs
+3. ask for a single confirmation prompt
+4. perform the real deletion only if you answer `Y` or `yes`
+
+Prompt behavior:
+
+- `Y` or `yes`: proceed with deletion
+- `n`, empty input, or anything else: cancel deletion
+
+## Scheduling
+
+If `USE_CRON=true`, the application starts the internal scheduler using `CRON_SCHEDULE`.
+
+Example:
+
+```env
+USE_CRON=true
+CRON_SCHEDULE=0 3 * * *
+```
+
+If `USE_CRON=false`, the app runs immediately and exits without starting the scheduler.
+
+## Environment Variables
+
+The full reference lives in [.env.example](C:/Users/silve/Documents/GitHub/qbitorrent-cleaner/.env.example).
+
+Core connection settings:
+
+- `QBITTORRENT_BASE_URL`
+- `QBITTORRENT_USERNAME`
+- `QBITTORRENT_PASSWORD`
+- `REQUEST_TIMEOUT_MS`
+
+Cleanup rules:
+
+- `MIN_RATIO`
+- `INACTIVE_DAYS`
+- `MIN_TORRENT_AGE_DAYS`
+- `ONLY_COMPLETED`
+
+Safety controls:
+
+- `DRY_RUN`
+- `INTERACTIVE`
+- `MAX_DELETE_PER_RUN`
+- `DELETE_FILES`
+- `EXCLUDED_TAG`
+- `PROTECTED_CATEGORIES`
+- `PROTECTED_SAVE_PATHS`
+
+Execution settings:
+
+- `USE_CRON`
+- `CRON_SCHEDULE`
+- `LOG_LEVEL`
 
 ## Docker
+
+Build and run with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-Le conteneur utilise la planification interne par défaut. Pour une exécution unique, surchargez la commande :
+The service uses your `.env` file and starts the compiled application from `dist/src/index.js`.
+
+Run a one-shot container command:
 
 ```bash
-docker run --env-file .env qbittorrent-cleaner node dist/index.js --run-once
+docker run --env-file .env qbittorrent-cleaner node dist/src/index.js --run-once
 ```
 
 ## Scripts
 
-- `npm run dev` : exécution locale simple
-- `npm run dev:watch` : développement avec rechargement
-- `npm run build` : compilation TypeScript
-- `npm run start` : exécution depuis `dist`
-- `npm run lint` : vérification ESLint
-- `npm run test` : tests unitaires
-- `npm run format` : formatage Prettier
+- `npm run dev` runs the app once from source
+- `npm run dev:watch` runs the app in watch mode
+- `npm run build` compiles TypeScript to `dist/`
+- `npm run start` starts the compiled app
+- `npm run lint` runs ESLint
+- `npm run test` runs the unit tests
+- `npm run test:watch` runs tests in watch mode
+- `npm run format` formats the repository with Prettier
 
-## Execution locale sans cron
+## Testing
 
-Si `USE_CRON=false`, `npm run dev` lance immédiatement une analyse puis s'arrête, sans démarrer le scheduler interne.
+The test suite currently covers:
 
-Si `USE_CRON=true`, l'application démarre le scheduler `node-cron` puis exécute aussi un premier passage au démarrage.
+- eligibility evaluation
+- inactivity fallback logic
+- protected tags, categories, and save paths
+- deletion limit enforcement
+- dry-run behavior
+- environment boolean parsing
+- interactive confirmation parsing
 
-Si `INTERACTIVE=true`, l'application commence toujours par un `dry-run`, puis demande une confirmation globale `Y/n` avant toute suppression réelle. La valeur par défaut est `N`, donc une entrée vide annule la suppression.
+Run the suite with:
 
-## Tests couverts
+```bash
+npm run test
+```
 
-- logique d'éligibilité
-- fallback sur la date de complétion
-- protections tag/catégorie/chemin
-- limite `MAX_DELETE_PER_RUN`
-- comportement `DRY_RUN`
-
-## Structure
+## Project Structure
 
 ```txt
 src/
@@ -100,3 +228,9 @@ src/
   utils/
 tests/
 ```
+
+## Notes
+
+- The qBittorrent Web API relies on a session cookie after authentication. This project handles that session flow internally.
+- On Windows or in some IDE terminals, interactive confirmation may need the console fallback implemented in the app. If no interactive console is available, deletion is cancelled automatically.
+- This project is designed to prefer safety over aggressiveness.

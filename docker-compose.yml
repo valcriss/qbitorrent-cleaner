@@ -4,4 +4,4 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: ["node", "dist/index.js"]
+    command: ["node", "dist/src/index.js"]
