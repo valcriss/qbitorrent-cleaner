@@ -7,6 +7,7 @@ import { QBittorrentClient } from './api/qbittorrentClient';
 import { TorrentCleaner } from './cleaner/cleaner';
 import { config, type AppConfig } from './config/config';
 import type { CleanupSummary } from './models/torrent';
+import { parseCliOptions, withCliOverrides } from './utils/cli';
 import {
   canUseProcessTty,
   isConfirmedAnswer,
@@ -126,45 +127,53 @@ const runInteractiveCleaner = async (): Promise<void> => {
 };
 
 const main = async (): Promise<void> => {
-  const runOnce = process.argv.includes('--run-once');
+  const cliOptions = parseCliOptions(process.argv.slice(2));
+  const appConfig = withCliOverrides(config, cliOptions);
 
-  if (runOnce) {
-    if (config.execution.interactive) {
+  if (cliOptions.configPath) {
+    logger.warn(
+      { configPath: cliOptions.configPath },
+      'CLI config files are not supported yet, continuing with environment-based configuration'
+    );
+  }
+
+  if (cliOptions.runOnce) {
+    if (appConfig.execution.interactive) {
       await runInteractiveCleaner();
       return;
     }
 
-    await runCleaner();
+    await runCleaner(appConfig);
     return;
   }
 
-  if (!config.scheduler.useCron) {
+  if (!appConfig.scheduler.useCron) {
     logger.info('USE_CRON=false, running cleaner immediately without scheduler');
-    if (config.execution.interactive) {
+    if (appConfig.execution.interactive) {
       await runInteractiveCleaner();
       return;
     }
 
-    await runCleaner();
+    await runCleaner(appConfig);
     return;
   }
 
-  logger.info({ cron: config.scheduler.cronSchedule }, 'Scheduling cleaner');
-  cron.schedule(config.scheduler.cronSchedule, () => {
-    if (config.execution.interactive) {
+  logger.info({ cron: appConfig.scheduler.cronSchedule }, 'Scheduling cleaner');
+  cron.schedule(appConfig.scheduler.cronSchedule, () => {
+    if (appConfig.execution.interactive) {
       void runInteractiveCleaner();
       return;
     }
 
-    void runCleaner();
+    void runCleaner(appConfig);
   });
 
-  if (config.execution.interactive) {
+  if (appConfig.execution.interactive) {
     await runInteractiveCleaner();
     return;
   }
 
-  await runCleaner();
+  await runCleaner(appConfig);
 };
 
 void main();
